@@ -24,7 +24,7 @@ with DAG(
     'store_transactions_cleaning',
     default_args=default_args,
     description='Clean store transactions data from MinIO and load to PostgreSQL',
-    schedule_interval='@daily',
+    schedule='@daily',
     start_date=datetime(2025, 12, 18),
     catchup=False,
     tags=['dataops', 'data-cleaning', 'minio', 'postgresql'],
