@@ -8,9 +8,8 @@ Data Cleaning DAG for Store Transactions
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.providers.ssh.operators.ssh import SSHOperator
-from airflow.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from minio import Minio
 
 default_args = {
     'owner': 'dataops',
@@ -31,31 +30,20 @@ with DAG(
     tags=['dataops', 'data-cleaning', 'minio', 'postgresql'],
 ) as dag:
 
-    # Task 1: Check MinIO bucket and file
-    def check_minio_file():
-        """Check if source file exists in MinIO"""
-        minio_client = Minio(
-            "minio:9000",
-            access_key="dataopsadmin",
-            secret_key="dataopsadmin",
-            secure=False
-        )
-        
-        # Check if bucket exists
-        if not minio_client.bucket_exists("dataops-bronze"):
-            raise Exception("Bucket 'dataops-bronze' does not exist!")
-        
-        # Check if file exists
-        try:
-            minio_client.stat_object("dataops-bronze", "raw/dirty_store_transactions.csv")
-            print("File exists in MinIO: raw/dirty_store_transactions.csv")
-            return True
-        except Exception as e:
-            raise Exception(f"File not found in MinIO: {e}")
-    
-    check_source = PythonOperator(
+    # Task 1: Check MinIO bucket and file (via SSH on spark_client)
+    check_source = SSHOperator(
         task_id='check_minio_source',
-        python_callable=check_minio_file,
+        ssh_conn_id='spark_client_ssh',
+        command="""
+        python3 -c "
+from minio import Minio
+client = Minio('minio:9000', access_key='dataopsadmin', secret_key='dataopsadmin', secure=False)
+if not client.bucket_exists('dataops-bronze'):
+    raise Exception('Bucket does not exist!')
+client.stat_object('dataops-bronze', 'raw/dirty_store_transactions.csv')
+print('✓ File exists in MinIO')
+        "
+        """,
     )
 
     # Task 2: Copy script to spark_client
